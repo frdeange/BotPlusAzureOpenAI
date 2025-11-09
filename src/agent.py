@@ -43,9 +43,9 @@ load_dotenv()
 agents_sdk_config = load_configuration_from_env(environ)
 
 # For User-Assigned Managed Identity, we need to create an AgentAuthConfiguration
-# with the auth_type set to USER_ASSIGNED_MSI
+# with the auth_type set to user_managed_identity
 auth_config = AgentAuthConfiguration(
-    auth_type=AuthTypes.USER_ASSIGNED_MSI,
+    auth_type=AuthTypes.user_managed_identity,
     client_id=environ.get("MicrosoftAppId"),
     tenant_id=environ.get("MicrosoftAppTenantId"),
 )
