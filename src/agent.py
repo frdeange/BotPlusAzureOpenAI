@@ -42,18 +42,20 @@ load_dotenv()
 # This reads MicrosoftAppType, MicrosoftAppId, MicrosoftAppTenantId, etc.
 agents_sdk_config = load_configuration_from_env(environ)
 
-# For User-Assigned Managed Identity, we need to create an AgentAuthConfiguration
-# with the auth_type set to user_managed_identity
-auth_config = AgentAuthConfiguration(
-    auth_type=AuthTypes.user_managed_identity,
-    client_id=environ.get("MicrosoftAppId"),
-    tenant_id=environ.get("MicrosoftAppTenantId"),
-)
+# For User-Assigned Managed Identity, create a configuration dictionary
+# with the required parameters for MsalConnectionManager
+auth_config_dict = {
+    "default": {
+        "auth_type": AuthTypes.user_managed_identity,
+        "client_id": environ.get("MicrosoftAppId"),
+        "tenant_id": environ.get("MicrosoftAppTenantId"),
+    }
+}
 
 # Initialize bot components
 STORAGE = MemoryStorage()
 CONNECTION_MANAGER = MsalConnectionManager(
-    connections_configurations={"default": auth_config}
+    connections_configurations=auth_config_dict
 )
 ADAPTER = CloudAdapter(connection_manager=CONNECTION_MANAGER)
 AUTHORIZATION = Authorization(STORAGE, CONNECTION_MANAGER, **agents_sdk_config)
