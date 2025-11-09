@@ -8,10 +8,10 @@ ms_agents_logger = logging.getLogger("microsoft_agents")
 ms_agents_logger.addHandler(logging.StreamHandler())
 ms_agents_logger.setLevel(logging.INFO)
 
-from src.agent import AGENT_APP, CONNECTION_MANAGER
+from src.agent import AGENT_APP, AUTH_CONFIG
 from src.start_server import start_server
 
 start_server(
     agent_application=AGENT_APP,
-    auth_configuration=CONNECTION_MANAGER.get_default_connection_configuration(),
+    auth_configuration=AUTH_CONFIG,
 )

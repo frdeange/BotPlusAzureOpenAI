@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 from openai import AsyncAzureOpenAI
 
 from microsoft_agents.hosting.aiohttp import CloudAdapter
-from microsoft_agents.authentication.msal import MsalConnectionManager
 
 from microsoft_agents.hosting.core import (
     Authorization,
@@ -42,25 +41,20 @@ load_dotenv()
 # This reads MicrosoftAppType, MicrosoftAppId, MicrosoftAppTenantId, etc.
 agents_sdk_config = load_configuration_from_env(environ)
 
-# For User-Assigned Managed Identity, create a configuration dictionary
-# with the required parameters for MsalConnectionManager
-# Based on Microsoft docs: https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/microsoft-authentication-library-configuration-options
-auth_config_dict = {
-    "default": {
-        "auth_type": AuthTypes.user_managed_identity,
-        "client_id": environ.get("MicrosoftAppId"),
-        "tenant_id": environ.get("MicrosoftAppTenantId"),
-        "scopes": ["https://api.botframework.com/.default"],
-    }
-}
+# Create auth configuration for the server middleware
+# This is used by jwt_authorization_middleware in start_server.py
+AUTH_CONFIG = AgentAuthConfiguration(
+    auth_type=AuthTypes.user_managed_identity,
+    client_id=environ.get("MicrosoftAppId"),
+    tenant_id=environ.get("MicrosoftAppTenantId"),
+)
 
 # Initialize bot components
+# When using User-Assigned Managed Identity in Azure, the CloudAdapter
+# will automatically use the managed identity assigned to the App Service
 STORAGE = MemoryStorage()
-CONNECTION_MANAGER = MsalConnectionManager(
-    connections_configurations=auth_config_dict
-)
-ADAPTER = CloudAdapter(connection_manager=CONNECTION_MANAGER)
-AUTHORIZATION = Authorization(STORAGE, CONNECTION_MANAGER, **agents_sdk_config)
+ADAPTER = CloudAdapter()
+AUTHORIZATION = Authorization(STORAGE, **agents_sdk_config)
 
 AGENT_APP = AgentApplication[TurnState](
     storage=STORAGE, adapter=ADAPTER, authorization=AUTHORIZATION, **agents_sdk_config
