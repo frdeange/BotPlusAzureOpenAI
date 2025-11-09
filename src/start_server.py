@@ -25,7 +25,15 @@ def start_server(
     APP["agent_app"] = agent_application
     APP["adapter"] = agent_application.adapter
 
+    # Azure App Service exposes the port via PORT environment variable
+    # Default to 8000 if not set (for local development)
+    port = int(environ.get("PORT", 8000))
+    
+    # Use 0.0.0.0 to accept external connections (required in Azure)
+    # In production, Azure handles the external routing
+    host = "0.0.0.0"
+
     try:
-        run_app(APP, host="localhost", port=environ.get("PORT", 3978))
+        run_app(APP, host=host, port=port)
     except Exception as error:
         raise error
