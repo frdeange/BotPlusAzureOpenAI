@@ -44,11 +44,13 @@ agents_sdk_config = load_configuration_from_env(environ)
 
 # For User-Assigned Managed Identity, create a configuration dictionary
 # with the required parameters for MsalConnectionManager
+# Based on Microsoft docs: https://learn.microsoft.com/en-us/microsoft-365/agents-sdk/microsoft-authentication-library-configuration-options
 auth_config_dict = {
     "default": {
         "auth_type": AuthTypes.user_managed_identity,
         "client_id": environ.get("MicrosoftAppId"),
         "tenant_id": environ.get("MicrosoftAppTenantId"),
+        "scopes": ["https://api.botframework.com/.default"],
     }
 }
 
