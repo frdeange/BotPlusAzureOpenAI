@@ -19,10 +19,13 @@ from microsoft_agents.authentication.msal import MsalConnectionManager
 from microsoft_agents.hosting.core import (
     Authorization,
     AgentApplication,
+    AgentAuthConfiguration,
     TurnState,
     TurnContext,
     MemoryStorage,
 )
+from microsoft_agents.hosting.core.authorization.auth_types import AuthTypes
+
 from microsoft_agents.activity import (
     load_configuration_from_env,
     Activity,
@@ -39,9 +42,19 @@ load_dotenv()
 # This reads MicrosoftAppType, MicrosoftAppId, MicrosoftAppTenantId, etc.
 agents_sdk_config = load_configuration_from_env(environ)
 
+# For User-Assigned Managed Identity, we need to create an AgentAuthConfiguration
+# with the auth_type set to USER_ASSIGNED_MSI
+auth_config = AgentAuthConfiguration(
+    auth_type=AuthTypes.USER_ASSIGNED_MSI,
+    client_id=environ.get("MicrosoftAppId"),
+    tenant_id=environ.get("MicrosoftAppTenantId"),
+)
+
 # Initialize bot components
 STORAGE = MemoryStorage()
-CONNECTION_MANAGER = MsalConnectionManager(**agents_sdk_config)
+CONNECTION_MANAGER = MsalConnectionManager(
+    connections_configurations={"default": auth_config}
+)
 ADAPTER = CloudAdapter(connection_manager=CONNECTION_MANAGER)
 AUTHORIZATION = Authorization(STORAGE, CONNECTION_MANAGER, **agents_sdk_config)
 
