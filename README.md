@@ -11,6 +11,8 @@ Intelligent bot built with **Microsoft Agents SDK** integrating **Azure OpenAI**
 - ✅ **Production-ready** for Azure Web App deployment
 - ✅ **Robust logging** and error handling
 - ✅ **Complies with Microsoft guidelines** (post-July 2025)
+- ✅ **Secure networking** with VNet integration support
+- ✅ **Application Insights** for monitoring
 
 ## 📅 Important: July 2025 Changes
 
@@ -29,15 +31,31 @@ User (Teams/Web Chat)
     ↓
 Azure Bot Service (with Managed Identity)
     ↓
-Azure Web App (your Python code)
+Azure App Service (your Python code) ← VNet Integration
+    ↓                                   ↓
+Azure OpenAI (streaming)          Application Insights
     ↓
-Azure OpenAI (streaming responses)
+AI Foundry (model deployment)
 ```
 
-**Key Components:**
-- `src/agent.py` - Bot logic with multitenant validation
-- `src/start_server.py` - Aiohttp HTTP server
-- `src/main.py` - Application entry point
+---
+
+# 📘 Complete Setup Guide: Step-by-Step
+
+This guide walks you through creating the entire solution from scratch, including all required Azure resources, networking, security, and Teams manifest deployment.
+
+**📖 For detailed step-by-step instructions**, see the [SETUP_GUIDE.md](SETUP_GUIDE.md) file.
+
+## Quick Links
+
+- [Azure Resources Overview](SETUP_GUIDE.md#1-azure-resources-overview)
+- [Prerequisites](SETUP_GUIDE.md#2-prerequisites)
+- [Networking Infrastructure](SETUP_GUIDE.md#4-step-2-create-networking-infrastructure)
+- [AI Foundry and Azure OpenAI Setup](SETUP_GUIDE.md#7-step-5-deploy-ai-foundry-and-azure-openai)
+- [Teams Manifest Creation](SETUP_GUIDE.md#11-step-9-create-and-deploy-teams-manifest)
+- [Troubleshooting Guide](SETUP_GUIDE.md#-troubleshooting)
+
+---
 
 **Key Components:**
 - `src/agent.py` - Bot logic with multitenant validation

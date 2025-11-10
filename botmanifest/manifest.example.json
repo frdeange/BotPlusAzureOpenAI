@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "00000000-0000-0000-0000-000000000000",
+  "packageName": "com.example.botproxy",
+  "name": {
+    "short": "Example Bot Proxy",
+    "full": "Example Bot Proxy (User Assigned Managed Identity)"
+  },
+  "description": {
+    "short": "Sample manifest for configuring the bot proxy locally.",
+    "full": "Replace every placeholder in this manifest with your Azure Bot settings before packaging. This bot uses User-Assigned Managed Identity for secure authentication and integrates with Azure OpenAI for intelligent responses."
+  },
+  "developer": {
+    "name": "Your Company",
+    "websiteUrl": "https://example.com",
+    "privacyUrl": "https://example.com/privacy",
+    "termsOfUseUrl": "https://example.com/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#6264A7",
+  "bots": [
+    {
+      "botId": "REPLACE_WITH_MANAGED_IDENTITY_CLIENT_ID",
+      "scopes": ["personal"],
+      "supportsFiles": false,
+      "isNotificationOnly": false
+    }
+  ],
+  "permissions": [ "identity" ],
+  "validDomains": [
+    "REPLACE_WITH_YOUR_APP_SERVICE_HOSTNAME"
+  ]
+}
