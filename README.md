@@ -245,7 +245,32 @@ az webapp config appsettings set \
   --settings @azure-webapp-settings.json
 ```
 
-**Step 3: Configure Messaging Endpoint**
+**Step 3: Configure Startup Command** ⚠️ **CRITICAL**
+
+The App Service **must** use the correct startup command to run the application:
+
+**Azure Portal:**
+1. Go to: **App Service** → **Configuration** → **General settings**
+2. In **Startup Command** field, enter:
+   ```
+   python -m src.main
+   ```
+3. Click **Save**
+
+**Azure CLI:**
+```bash
+az webapp config set \
+  --resource-group <your-rg> \
+  --name <your-webapp> \
+  --startup-file "python -m src.main"
+```
+
+> **Why is this important?**
+> - The project uses module-qualified imports (`from src...`)
+> - Azure needs to run the application as a module, not a script
+> - Without this, you'll get `ModuleNotFoundError` errors
+
+**Step 4: Configure Messaging Endpoint**
 
 1. Go to: **Azure Portal** → Your **Azure Bot**
 2. Left menu: **Settings** → **Configuration**
@@ -255,7 +280,7 @@ az webapp config appsettings set \
    ```
 4. Click **Apply**
 
-**Step 4: Deploy Code**
+**Step 5: Deploy Code**
 
 **Deploy via Azure CLI:**
 ```bash
@@ -270,6 +295,12 @@ az webapp deploy \
   --src-path bot.zip \
   --type zip
 ```
+
+**Step 6: Test the Deployment**
+
+1. Go to: **Azure Portal** → Your **Azure Bot** → **Test in Web Chat**
+2. Send a test message
+3. Verify streaming responses
 
 ---
 
@@ -296,13 +327,11 @@ git remote add azure $GIT_URL
 git push azure main
 ```
 
+⚠️ **Important:** After deploying with Git, you still need to:
+1. Configure the startup command: `python -m src.main` (see Step 3 above)
+2. Configure environment variables (see Step 2 above)
+
 ---
-
-### Step 5: Test the Deployment
-
-1. Go to: **Azure Portal** → Your **Azure Bot** → **Test in Web Chat**
-2. Send a test message
-3. Verify streaming responses
 
 ## 📊 Monitoring
 
@@ -353,9 +382,21 @@ Go to: **App Service** → **Monitoring** → **Metrics**
 ### Error: "ModuleNotFoundError"
 
 ✅ Verify:
+- **Startup command is set to `python -m src.main`** (most common cause)
 - Module is in `requirements.txt`
 - Re-deploy code
 - App Service will install dependencies automatically
+
+**Check startup command:**
+```bash
+# Azure CLI
+az webapp config show \
+  --resource-group <your-rg> \
+  --name <your-webapp> \
+  --query "appCommandLine"
+```
+
+Should return: `"python -m src.main"`
 
 ## 🔒 Security Best Practices
 
@@ -407,6 +448,7 @@ az webapp config access-restriction add \
 
 - [ ] Managed Identity associated with App Service
 - [ ] Environment variables configured in Azure
+- [ ] **Startup command configured: `python -m src.main`** ⚠️ **CRITICAL**
 - [ ] Code deployed successfully
 - [ ] App Service in "Running" state
 - [ ] Messaging endpoint configured in Bot Service
