@@ -87,8 +87,16 @@ async def on_members_added(context: TurnContext, _state: TurnState):
     Sends a welcome message when users are added to the conversation.
     """
     await context.send_activity(
-        "Welcome! I'm your AI assistant powered by Azure OpenAI. "
-        "I can access your SharePoint files when needed. Just ask me anything!"
+        "👋 Welcome! I'm your AI assistant powered by Azure OpenAI.\n\n"
+        "**What I can do:**\n"
+        "- Answer general questions\n"
+        "- Access your Microsoft 365 files (with your permission)\n"
+        "- Search your SharePoint and OneDrive\n\n"
+        "**Commands:**\n"
+        "- `/login` - Sign in to access your files\n"
+        "- `/logout` - Sign out\n"
+        "- Just ask naturally! I'll request authentication when needed.\n\n"
+        "Try: *'What is Azure?'* or *'Show my recent files'*"
     )
 
 @AGENT_APP.activity("event")
@@ -135,7 +143,41 @@ async def on_message(context: TurnContext, _state: TurnState):
     # ========================================
     # SPECIAL COMMANDS
     # ========================================
-    if user_message and user_message.lower().strip() in ["logout", "signout", "sign out"]:
+    
+    # Handle /login command (Microsoft Teams convention)
+    if user_message and user_message.lower().strip() in ["/login", "/signin", "login", "sign in"]:
+        logger.info(f"User requested login: {context.activity.from_property.id}")
+        
+        # Check if already authenticated
+        token_response = await context.adapter.get_user_token(
+            context,
+            connection_name=OAUTH_CONNECTION_NAME,
+            magic_code=None
+        )
+        
+        if token_response and token_response.token:
+            await context.send_activity("✅ You are already signed in!")
+        else:
+            await context.send_activity(
+                Activity(
+                    type=ActivityTypes.message,
+                    text="🔐 Please sign in to access your Microsoft 365 data:",
+                    attachments=[
+                        {
+                            "contentType": "application/vnd.microsoft.card.oauth",
+                            "content": {
+                                "connectionName": OAUTH_CONNECTION_NAME,
+                                "title": "Sign in",
+                                "text": "Sign in to allow me to access your files on your behalf"
+                            }
+                        }
+                    ]
+                )
+            )
+        return
+    
+    # Handle /logout command
+    if user_message and user_message.lower().strip() in ["/logout", "/signout", "logout", "signout", "sign out"]:
         try:
             await context.adapter.sign_out_user(context, connection_name=OAUTH_CONNECTION_NAME)
             await context.send_activity("✅ You have been signed out successfully.")
@@ -279,23 +321,49 @@ async def on_message(context: TurnContext, _state: TurnState):
 def _requires_user_authentication(message: str) -> bool:
     """
     Determine if the user's message requires authentication to access their data.
-    This is a simple keyword-based check. You can make this more sophisticated
-    with AI classification or more complex logic.
+    Uses keyword detection for fast response.
+    You can enhance this with AI classification for more sophisticated detection.
     """
     if not message:
         return False
     
     message_lower = message.lower()
     
+    # Explicit commands
+    if message_lower.strip() in ["/login", "/signin", "login", "sign in"]:
+        return True
+    
     # Keywords that indicate the user wants to access their personal data
     auth_keywords = [
+        # File operations
         "my files", "my documents", "my sharepoint", "my onedrive",
         "list files", "search files", "find files", "show files",
         "recent files", "shared with me", "my folders",
-        "upload", "download", "create file", "delete file"
+        "upload", "download", "create file", "delete file",
+        
+        # SharePoint specific
+        "sharepoint site", "team site", "document library",
+        
+        # Email/Calendar (if you add those scopes)
+        "my emails", "my calendar", "my meetings",
+        
+        # Teams specific
+        "my teams", "my channels",
+        
+        # Generic personal data
+        "my data", "my information", "access my",
     ]
     
-    return any(keyword in message_lower for keyword in auth_keywords)
+    # Check for any keyword match
+    if any(keyword in message_lower for keyword in auth_keywords):
+        return True
+    
+    # Check for possessive patterns like "show me my..." or "get my..."
+    possessive_patterns = ["show me my", "get my", "find my", "search my", "list my"]
+    if any(pattern in message_lower for pattern in possessive_patterns):
+        return True
+    
+    return False
 
 
 async def _call_microsoft_graph(user_token: str, user_query: str) -> str:
