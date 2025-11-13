@@ -77,6 +77,9 @@ CLIENT = AsyncAzureOpenAI(
     api_key=environ["AZURE_OPENAI_API_KEY"]
 )
 
+# OAuth connection name configured in Azure Bot Service
+OAUTH_CONNECTION_NAME = environ.get("OAUTH_CONNECTION_NAME", "SharePointConnection")
+
 @AGENT_APP.conversation_update("membersAdded")
 async def on_members_added(context: TurnContext, _state: TurnState):
     """
@@ -84,8 +87,24 @@ async def on_members_added(context: TurnContext, _state: TurnState):
     Sends a welcome message when users are added to the conversation.
     """
     await context.send_activity(
-        "Welcome! I'm your AI assistant powered by Azure OpenAI. Ask me anything!"
+        "Welcome! I'm your AI assistant powered by Azure OpenAI. "
+        "I can access your SharePoint files when needed. Just ask me anything!"
     )
+
+@AGENT_APP.activity("event")
+async def on_event(context: TurnContext, _state: TurnState):
+    """
+    Handle event activities, including OAuth token/response events.
+    This is triggered when the user completes the OAuth sign-in flow.
+    """
+    if context.activity.name == "token/response":
+        logger.info(f"User completed OAuth sign-in: {context.activity.from_property.id}")
+        await context.send_activity(
+            "✅ Thank you for signing in! I can now access your SharePoint files on your behalf. "
+            "You can ask me things like 'list my files' or 'search for documents about X'."
+        )
+    else:
+        logger.info(f"Event activity received: {context.activity.name}")
 
 @AGENT_APP.activity("invoke")
 async def invoke(context: TurnContext, _state: TurnState) -> str:
@@ -105,12 +124,26 @@ async def on_message(context: TurnContext, _state: TurnState):
     """
     Main message handler: captures user messages and forwards to Azure OpenAI.
     Includes optional tenant validation for multi-tenant scenarios.
+    Implements OAuth user authentication for SharePoint access.
     Uses streaming responses for better user experience.
     """
     user_message = context.activity.text
     conversation_id = context.activity.conversation.id
     
     logger.info(f"Received message from {conversation_id}: {user_message[:50]}...")
+    
+    # ========================================
+    # SPECIAL COMMANDS
+    # ========================================
+    if user_message and user_message.lower().strip() in ["logout", "signout", "sign out"]:
+        try:
+            await context.adapter.sign_out_user(context, connection_name=OAUTH_CONNECTION_NAME)
+            await context.send_activity("✅ You have been signed out successfully.")
+            logger.info(f"User signed out: {context.activity.from_property.id}")
+        except Exception as e:
+            logger.error(f"Error signing out user: {e}", exc_info=True)
+            await context.send_activity("Error signing out. Please try again.")
+        return
     
     # ========================================
     # MULTI-TENANT VALIDATION (Optional)
@@ -141,6 +174,70 @@ async def on_message(context: TurnContext, _state: TurnState):
                 logger.info(f"Tenant {user_tenant_id} authorized successfully")
     
     # ========================================
+    # OAUTH USER AUTHENTICATION
+    # ========================================
+    # Check if user authentication is required (based on user's request)
+    requires_auth = _requires_user_authentication(user_message)
+    
+    if requires_auth:
+        # Try to get the user's OAuth token
+        token_response = await context.adapter.get_user_token(
+            context,
+            connection_name=OAUTH_CONNECTION_NAME,
+            magic_code=None
+        )
+        
+        if not token_response or not token_response.token:
+            # User is not authenticated - send OAuth card
+            logger.info(f"User not authenticated, sending OAuth card to {context.activity.from_property.id}")
+            
+            await context.send_activity(
+                Activity(
+                    type=ActivityTypes.message,
+                    text="🔐 To access your SharePoint files, please sign in:",
+                    attachments=[
+                        {
+                            "contentType": "application/vnd.microsoft.card.oauth",
+                            "content": {
+                                "connectionName": OAUTH_CONNECTION_NAME,
+                                "title": "Sign in",
+                                "text": "Please sign in to allow me to access your files on your behalf"
+                            }
+                        }
+                    ]
+                )
+            )
+            return
+        
+        # User is authenticated - we have their token
+        user_token = token_response.token
+        user_id = context.activity.from_property.aad_object_id or context.activity.from_property.id
+        logger.info(f"User {user_id} authenticated successfully for SharePoint access")
+        
+        # ========================================
+        # ACCESS MICROSOFT GRAPH WITH USER TOKEN
+        # ========================================
+        try:
+            graph_data = await _call_microsoft_graph(user_token, user_message)
+            
+            # Include Graph data in the AI context
+            system_message = (
+                "You are a helpful AI assistant with access to the user's Microsoft 365 data. "
+                "Use the following data from Microsoft Graph to help answer the user's question:\n\n"
+                f"{graph_data}\n\n"
+                "Provide a helpful and natural response based on this data."
+            )
+        except Exception as e:
+            logger.error(f"Error accessing Microsoft Graph: {e}", exc_info=True)
+            await context.send_activity(
+                "⚠️ I encountered an error accessing your files. Please try again or contact support."
+            )
+            return
+    else:
+        # No authentication required - use standard system message
+        system_message = "You are a helpful AI assistant. Respond naturally and helpfully to user queries."
+    
+    # ========================================
     # AZURE OPENAI STREAMING RESPONSE
     # ========================================
     # Use streaming response for better UX
@@ -152,10 +249,7 @@ async def on_message(context: TurnContext, _state: TurnState):
         streamed_response = await CLIENT.chat.completions.create(
             model=environ["AZURE_OPENAI_DEPLOYMENT_NAME"],
             messages=[
-                {
-                    "role": "system", 
-                    "content": "You are a helpful AI assistant. Respond naturally and helpfully to user queries."
-                },
+                {"role": "system", "content": system_message},
                 {"role": "user", "content": user_message}
             ],
             stream=True,
@@ -176,3 +270,99 @@ async def on_message(context: TurnContext, _state: TurnState):
     finally:
         # Always end the stream
         await context.streaming_response.end_stream()
+
+
+# ========================================
+# HELPER FUNCTIONS
+# ========================================
+
+def _requires_user_authentication(message: str) -> bool:
+    """
+    Determine if the user's message requires authentication to access their data.
+    This is a simple keyword-based check. You can make this more sophisticated
+    with AI classification or more complex logic.
+    """
+    if not message:
+        return False
+    
+    message_lower = message.lower()
+    
+    # Keywords that indicate the user wants to access their personal data
+    auth_keywords = [
+        "my files", "my documents", "my sharepoint", "my onedrive",
+        "list files", "search files", "find files", "show files",
+        "recent files", "shared with me", "my folders",
+        "upload", "download", "create file", "delete file"
+    ]
+    
+    return any(keyword in message_lower for keyword in auth_keywords)
+
+
+async def _call_microsoft_graph(user_token: str, user_query: str) -> str:
+    """
+    Call Microsoft Graph API with the user's token to access their data.
+    This is a simple example that retrieves the user's OneDrive files.
+    You can expand this to access SharePoint sites, search, etc.
+    """
+    import aiohttp
+    
+    headers = {
+        "Authorization": f"Bearer {user_token}",
+        "Content-Type": "application/json"
+    }
+    
+    graph_data = []
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Example 1: Get user's profile
+            async with session.get(
+                "https://graph.microsoft.com/v1.0/me",
+                headers=headers
+            ) as response:
+                if response.status == 200:
+                    user_profile = await response.json()
+                    graph_data.append(f"User: {user_profile.get('displayName')} ({user_profile.get('mail')})")
+            
+            # Example 2: Get user's recent OneDrive files
+            async with session.get(
+                "https://graph.microsoft.com/v1.0/me/drive/recent?$top=10",
+                headers=headers
+            ) as response:
+                if response.status == 200:
+                    recent_files = await response.json()
+                    files_list = []
+                    for item in recent_files.get("value", []):
+                        file_name = item.get("name", "Unknown")
+                        last_modified = item.get("lastModifiedDateTime", "Unknown")
+                        web_url = item.get("webUrl", "")
+                        files_list.append(f"- {file_name} (modified: {last_modified})")
+                    
+                    if files_list:
+                        graph_data.append("Recent files:\n" + "\n".join(files_list))
+                    else:
+                        graph_data.append("No recent files found.")
+            
+            # Example 3: Search for files based on query (if query contains search intent)
+            if any(keyword in user_query.lower() for keyword in ["search", "find", "look for"]):
+                search_query = user_query.split("search")[-1].split("find")[-1].strip()
+                if search_query:
+                    async with session.get(
+                        f"https://graph.microsoft.com/v1.0/me/drive/root/search(q='{search_query}')?$top=5",
+                        headers=headers
+                    ) as response:
+                        if response.status == 200:
+                            search_results = await response.json()
+                            results_list = []
+                            for item in search_results.get("value", []):
+                                file_name = item.get("name", "Unknown")
+                                results_list.append(f"- {file_name}")
+                            
+                            if results_list:
+                                graph_data.append(f"Search results for '{search_query}':\n" + "\n".join(results_list))
+        
+        return "\n\n".join(graph_data) if graph_data else "No data retrieved from Microsoft Graph."
+        
+    except Exception as e:
+        logger.error(f"Error calling Microsoft Graph: {e}", exc_info=True)
+        raise

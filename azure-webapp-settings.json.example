@@ -1,0 +1,62 @@
+[
+  {
+    "name": "MicrosoftAppType",
+    "value": "UserAssignedMSI",
+    "slotSetting": false
+  },
+  {
+    "name": "MicrosoftAppId",
+    "value": "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+    "slotSetting": false
+  },
+  {
+    "name": "MicrosoftAppPassword",
+    "value": "",
+    "slotSetting": false
+  },
+  {
+    "name": "MicrosoftAppTenantId",
+    "value": "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+    "slotSetting": false
+  },
+  {
+    "name": "ALLOWED_TENANTS",
+    "value": "",
+    "slotSetting": false
+  },
+  {
+    "name": "OAUTH_CONNECTION_NAME",
+    "value": "SharePointConnection",
+    "slotSetting": false
+  },
+  {
+    "name": "AZURE_OPENAI_ENDPOINT",
+    "value": "https://your-openai-resource.openai.azure.com/",
+    "slotSetting": false
+  },
+  {
+    "name": "AZURE_OPENAI_API_KEY",
+    "value": "your-api-key-here",
+    "slotSetting": false
+  },
+  {
+    "name": "AZURE_OPENAI_API_VERSION",
+    "value": "2024-02-15-preview",
+    "slotSetting": false
+  },
+  {
+    "name": "AZURE_OPENAI_DEPLOYMENT_NAME",
+    "value": "your-deployment-name",
+    "slotSetting": false
+  },
+  {
+    "name": "PORT",
+    "value": "8000",
+    "slotSetting": false
+  },
+  {
+    "name": "LOG_LEVEL",
+    "value": "INFO",
+    "slotSetting": false
+  }
+]

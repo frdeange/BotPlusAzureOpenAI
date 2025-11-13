@@ -157,6 +157,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Azure deployment settings with secrets
+azure-webapp-settings.json
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -220,3 +223,9 @@ copilot-instructions.md
 
 # Bot manifest published with tenant-specific values
 botmanifest/manifest.json
+
+# SSL/TLS Certificates and private keys
+certs/
+*.pem
+*.key
+*.crt
