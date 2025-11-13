@@ -68,21 +68,47 @@ jobs:
           echo "ip=$RUNNER_IP" >> $GITHUB_OUTPUT
           echo "✅ GitHub Runner IP: $RUNNER_IP"
       
-      - name: Add temporary IP restriction to allow deployment
+      - name: Get all possible IPs for this runner
+        id: all-ips
         run: |
-          echo "🔓 Opening firewall for deployment..."
+          echo "📡 Detecting all possible IPs..."
+          echo "IP from ipify: $(curl -s https://api.ipify.org)"
+          echo "IP from icanhazip: $(curl -s https://icanhazip.com)"
+          echo "IP from ifconfig.me: $(curl -s https://ifconfig.me)"
+      
+      - name: Add temporary IP restriction (main IP)
+        run: |
+          echo "🔓 Opening firewall for deployment (main IP)..."
           az webapp config access-restriction add \
             --resource-group RG-Devoteam-Secure \
             --name devoteam-securebot \
-            --rule-name "GitHub-Actions-Temp" \
+            --rule-name "GitHub-Actions-Temp-Main" \
             --action Allow \
             --ip-address ${{ steps.ip.outputs.ip }}/32 \
-            --priority 100
+            --priority 100 || echo "Rule might already exist"
       
-      - name: Wait for firewall rule to apply
+      # Agregar también la regla para el SCM (Kudu) endpoint
+      - name: Add temporary IP restriction (SCM endpoint)
         run: |
-          echo "⏳ Waiting 15 seconds for firewall rule to propagate..."
-          sleep 15
+          echo "🔓 Opening SCM firewall for deployment..."
+          az webapp config access-restriction add \
+            --resource-group RG-Devoteam-Secure \
+            --name devoteam-securebot \
+            --rule-name "GitHub-Actions-Temp-SCM" \
+            --action Allow \
+            --ip-address ${{ steps.ip.outputs.ip }}/32 \
+            --priority 101 \
+            --scm-site true || echo "SCM rule might already exist"
+      
+      - name: Wait for firewall rules to apply
+        run: |
+          echo "⏳ Waiting 30 seconds for firewall rules to propagate..."
+          sleep 30
+      
+      - name: Verify App Service accessibility
+        run: |
+          echo "🔍 Testing connectivity to App Service..."
+          curl -I https://devoteam-securebot-cwgmc3dsbsf4eqah.swedencentral-01.azurewebsites.net || echo "⚠️ App might not be accessible yet"
       
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
@@ -91,14 +117,20 @@ jobs:
           app-name: 'devoteam-securebot'
           slot-name: 'Production'
       
-      - name: Remove temporary IP restriction
+      - name: Remove temporary IP restrictions
         if: always()
         run: |
           echo "🔒 Closing firewall after deployment..."
           az webapp config access-restriction remove \
             --resource-group RG-Devoteam-Secure \
             --name devoteam-securebot \
-            --rule-name "GitHub-Actions-Temp" || echo "⚠️ Rule already removed or doesn't exist"
+            --rule-name "GitHub-Actions-Temp-Main" || echo "⚠️ Main rule already removed"
+          
+          az webapp config access-restriction remove \
+            --resource-group RG-Devoteam-Secure \
+            --name devoteam-securebot \
+            --rule-name "GitHub-Actions-Temp-SCM" \
+            --scm-site true || echo "⚠️ SCM rule already removed"
       
       - name: Azure Logout
         if: always()
