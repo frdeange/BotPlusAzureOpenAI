@@ -223,6 +223,7 @@ copilot-instructions.md
 
 # Bot manifest published with tenant-specific values
 botmanifest/manifest.json
+script.sh
 
 # SSL/TLS Certificates and private keys
 certs/
