@@ -85,15 +85,23 @@ OAUTH_CONNECTION_NAME = environ.get("OAUTH_CONNECTION_NAME", "SharePointConnecti
 # Client factory for creating UserTokenClient (requires CONNECTION_MANAGER)
 CLIENT_FACTORY = RestChannelServiceClientFactory(connection_manager=CONNECTION_MANAGER)
 
-async def _get_user_token_client(context: TurnContext) -> UserTokenClient:
+async def _get_user_token_client(context: TurnContext, state: TurnState) -> UserTokenClient:
     """
     Create a UserTokenClient for OAuth operations.
     """
-    # Get the claims identity from the turn context
-    claims_identity = context.turn_state.get("ClaimsIdentity")
+    # Get the claims identity from TurnState
+    # The claims identity is set by the authorization middleware
+    claims_identity = state.get("ClaimsIdentity")
+    
     if not claims_identity:
-        # Try to get it from the activity
-        claims_identity = getattr(context.activity, "claims_identity", None)
+        # Fallback: try to get it from turn_state dict
+        claims_identity = context.turn_state.get("ClaimsIdentity")
+    
+    if not claims_identity:
+        # Last resort: create an empty one (though this shouldn't be needed with proper middleware)
+        logger.warning("ClaimsIdentity not found in state, creating anonymous identity")
+        from microsoft_agents.hosting.core.authorization import ClaimsIdentity
+        claims_identity = ClaimsIdentity(claims=[], is_authenticated=False)
     
     # Create the user token client
     return await CLIENT_FACTORY.create_user_token_client(context, claims_identity)
@@ -168,7 +176,7 @@ async def on_message(context: TurnContext, _state: TurnState):
         
         try:
             # Get UserTokenClient
-            user_token_client = await _get_user_token_client(context)
+            user_token_client = await _get_user_token_client(context, _state)
             
             # Check if already authenticated
             user_id = context.activity.from_property.id
@@ -208,7 +216,7 @@ async def on_message(context: TurnContext, _state: TurnState):
     if user_message and user_message.lower().strip() in ["/logout", "/signout", "logout", "signout", "sign out"]:
         try:
             # Get UserTokenClient
-            user_token_client = await _get_user_token_client(context)
+            user_token_client = await _get_user_token_client(context, _state)
             
             user_id = context.activity.from_property.id
             channel_id = context.activity.channel_id
@@ -263,7 +271,7 @@ async def on_message(context: TurnContext, _state: TurnState):
     if requires_auth:
         try:
             # Get UserTokenClient
-            user_token_client = await _get_user_token_client(context)
+            user_token_client = await _get_user_token_client(context, _state)
             
             user_id = context.activity.from_property.id
             channel_id = context.activity.channel_id
