@@ -82,8 +82,8 @@ CLIENT = AsyncAzureOpenAI(
 # OAuth connection name configured in Azure Bot Service
 OAUTH_CONNECTION_NAME = environ.get("OAUTH_CONNECTION_NAME", "SharePointConnection")
 
-# Client factory for creating UserTokenClient
-CLIENT_FACTORY = RestChannelServiceClientFactory()
+# Client factory for creating UserTokenClient (requires CONNECTION_MANAGER)
+CLIENT_FACTORY = RestChannelServiceClientFactory(connection_manager=CONNECTION_MANAGER)
 
 async def _get_user_token_client(context: TurnContext) -> UserTokenClient:
     """
