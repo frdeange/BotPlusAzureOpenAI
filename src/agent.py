@@ -23,8 +23,10 @@ from microsoft_agents.hosting.core import (
     TurnState,
     TurnContext,
     MemoryStorage,
+    RestChannelServiceClientFactory,
 )
 from microsoft_agents.hosting.core.authorization.auth_types import AuthTypes
+from microsoft_agents.hosting.core.connector.client import UserTokenClient
 
 from microsoft_agents.activity import (
     load_configuration_from_env,
@@ -79,6 +81,22 @@ CLIENT = AsyncAzureOpenAI(
 
 # OAuth connection name configured in Azure Bot Service
 OAUTH_CONNECTION_NAME = environ.get("OAUTH_CONNECTION_NAME", "SharePointConnection")
+
+# Client factory for creating UserTokenClient
+CLIENT_FACTORY = RestChannelServiceClientFactory()
+
+async def _get_user_token_client(context: TurnContext) -> UserTokenClient:
+    """
+    Create a UserTokenClient for OAuth operations.
+    """
+    # Get the claims identity from the turn context
+    claims_identity = context.turn_state.get("ClaimsIdentity")
+    if not claims_identity:
+        # Try to get it from the activity
+        claims_identity = getattr(context.activity, "claims_identity", None)
+    
+    # Create the user token client
+    return await CLIENT_FACTORY.create_user_token_client(context, claims_identity)
 
 @AGENT_APP.conversation_update("membersAdded")
 async def on_members_added(context: TurnContext, _state: TurnState):
@@ -148,38 +166,59 @@ async def on_message(context: TurnContext, _state: TurnState):
     if user_message and user_message.lower().strip() in ["/login", "/signin", "login", "sign in"]:
         logger.info(f"User requested login: {context.activity.from_property.id}")
         
-        # Check if already authenticated
-        token_response = await context.adapter.get_user_token(
-            context,
-            connection_name=OAUTH_CONNECTION_NAME,
-            magic_code=None
-        )
-        
-        if token_response and token_response.token:
-            await context.send_activity("✅ You are already signed in!")
-        else:
-            await context.send_activity(
-                Activity(
-                    type=ActivityTypes.message,
-                    text="🔐 Please sign in to access your Microsoft 365 data:",
-                    attachments=[
-                        {
-                            "contentType": "application/vnd.microsoft.card.oauth",
-                            "content": {
-                                "connectionName": OAUTH_CONNECTION_NAME,
-                                "title": "Sign in",
-                                "text": "Sign in to allow me to access your files on your behalf"
-                            }
-                        }
-                    ]
-                )
+        try:
+            # Get UserTokenClient
+            user_token_client = await _get_user_token_client(context)
+            
+            # Check if already authenticated
+            user_id = context.activity.from_property.id
+            channel_id = context.activity.channel_id
+            
+            token_response = await user_token_client.user_token.get_token(
+                user_id=user_id,
+                connection_name=OAUTH_CONNECTION_NAME,
+                channel_id=channel_id
             )
+            
+            if token_response and token_response.token:
+                await context.send_activity("✅ You are already signed in!")
+            else:
+                await context.send_activity(
+                    Activity(
+                        type=ActivityTypes.message,
+                        text="🔐 Please sign in to access your Microsoft 365 data:",
+                        attachments=[
+                            {
+                                "contentType": "application/vnd.microsoft.card.oauth",
+                                "content": {
+                                    "connectionName": OAUTH_CONNECTION_NAME,
+                                    "title": "Sign in",
+                                    "text": "Sign in to allow me to access your files on your behalf"
+                                }
+                            }
+                        ]
+                    )
+                )
+        except Exception as e:
+            logger.error(f"Error during login: {e}", exc_info=True)
+            await context.send_activity("⚠️ An error occurred during sign-in. Please try again.")
         return
     
     # Handle /logout command
     if user_message and user_message.lower().strip() in ["/logout", "/signout", "logout", "signout", "sign out"]:
         try:
-            await context.adapter.sign_out_user(context, connection_name=OAUTH_CONNECTION_NAME)
+            # Get UserTokenClient
+            user_token_client = await _get_user_token_client(context)
+            
+            user_id = context.activity.from_property.id
+            channel_id = context.activity.channel_id
+            
+            await user_token_client.user_token.sign_out(
+                user_id=user_id,
+                connection_name=OAUTH_CONNECTION_NAME,
+                channel_id=channel_id
+            )
+            
             await context.send_activity("✅ You have been signed out successfully.")
             logger.info(f"User signed out: {context.activity.from_property.id}")
         except Exception as e:
@@ -222,44 +261,49 @@ async def on_message(context: TurnContext, _state: TurnState):
     requires_auth = _requires_user_authentication(user_message)
     
     if requires_auth:
-        # Try to get the user's OAuth token
-        token_response = await context.adapter.get_user_token(
-            context,
-            connection_name=OAUTH_CONNECTION_NAME,
-            magic_code=None
-        )
-        
-        if not token_response or not token_response.token:
-            # User is not authenticated - send OAuth card
-            logger.info(f"User not authenticated, sending OAuth card to {context.activity.from_property.id}")
-            
-            await context.send_activity(
-                Activity(
-                    type=ActivityTypes.message,
-                    text="🔐 To access your SharePoint files, please sign in:",
-                    attachments=[
-                        {
-                            "contentType": "application/vnd.microsoft.card.oauth",
-                            "content": {
-                                "connectionName": OAUTH_CONNECTION_NAME,
-                                "title": "Sign in",
-                                "text": "Please sign in to allow me to access your files on your behalf"
-                            }
-                        }
-                    ]
-                )
-            )
-            return
-        
-        # User is authenticated - we have their token
-        user_token = token_response.token
-        user_id = context.activity.from_property.aad_object_id or context.activity.from_property.id
-        logger.info(f"User {user_id} authenticated successfully for SharePoint access")
-        
-        # ========================================
-        # ACCESS MICROSOFT GRAPH WITH USER TOKEN
-        # ========================================
         try:
+            # Get UserTokenClient
+            user_token_client = await _get_user_token_client(context)
+            
+            user_id = context.activity.from_property.id
+            channel_id = context.activity.channel_id
+            
+            # Try to get the user's OAuth token
+            token_response = await user_token_client.user_token.get_token(
+                user_id=user_id,
+                connection_name=OAUTH_CONNECTION_NAME,
+                channel_id=channel_id
+            )
+            
+            if not token_response or not token_response.token:
+                # User is not authenticated - send OAuth card
+                logger.info(f"User not authenticated, sending OAuth card to {user_id}")
+                
+                await context.send_activity(
+                    Activity(
+                        type=ActivityTypes.message,
+                        text="🔐 To access your SharePoint files, please sign in:",
+                        attachments=[
+                            {
+                                "contentType": "application/vnd.microsoft.card.oauth",
+                                "content": {
+                                    "connectionName": OAUTH_CONNECTION_NAME,
+                                    "title": "Sign in",
+                                    "text": "Please sign in to allow me to access your files on your behalf"
+                                }
+                            }
+                        ]
+                    )
+                )
+                return
+            
+            # User is authenticated - we have their token
+            user_token = token_response.token
+            logger.info(f"User {user_id} authenticated successfully for SharePoint access")
+            
+            # ========================================
+            # ACCESS MICROSOFT GRAPH WITH USER TOKEN
+            # ========================================
             graph_data = await _call_microsoft_graph(user_token, user_message)
             
             # Include Graph data in the AI context
