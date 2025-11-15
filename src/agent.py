@@ -89,17 +89,13 @@ async def _get_user_token_client(context: TurnContext, state: TurnState) -> User
     """
     Create a UserTokenClient for OAuth operations.
     """
-    # Get the claims identity from TurnState
-    # The claims identity is set by the authorization middleware
-    claims_identity = state.get("ClaimsIdentity")
-    
-    if not claims_identity:
-        # Fallback: try to get it from turn_state dict
-        claims_identity = context.turn_state.get("ClaimsIdentity")
+    # Get the claims identity from the TurnContext's turn_state dictionary
+    # This is set by the authorization middleware during request processing
+    claims_identity = context.turn_state.get("ClaimsIdentity")
     
     if not claims_identity:
         # Last resort: create an empty one (though this shouldn't be needed with proper middleware)
-        logger.warning("ClaimsIdentity not found in state, creating anonymous identity")
+        logger.warning("ClaimsIdentity not found in turn_state, creating anonymous identity")
         from microsoft_agents.hosting.core.authorization import ClaimsIdentity
         claims_identity = ClaimsIdentity(claims=[], is_authenticated=False)
     
